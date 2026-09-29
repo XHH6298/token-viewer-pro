@@ -2075,6 +2075,7 @@
       breakdownDonutChart.data.datasets[0].data = data;
       breakdownDonutChart.data.datasets[0].backgroundColor = bgColors;
       breakdownDonutChart.data.datasets[0].hoverBorderColor = hoverBorderColor;
+      breakdownDonutChart.resize(66, 66);
       breakdownDonutChart.update();
       return;
     }
@@ -2094,8 +2095,9 @@
       },
       options: {
         responsive: true,
-        maintainAspectRatio: false,
-        animation: { duration: 350 },
+        maintainAspectRatio: true,
+        aspectRatio: 1,
+        animation: { duration: 300 },
         cutout: '72%',
         plugins: {
           legend: { display: false },
