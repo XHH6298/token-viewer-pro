@@ -2675,5 +2675,20 @@
     window.exitCapsuleMode = exitCapsuleMode;
   }
 
-  window.addEventListener('DOMContentLoaded', init);
+  // 监听窗口重新获得焦点与 WebView 就绪事件，主动补刷系统毛玻璃，消除失焦变灰
+  function triggerBackdropRefresh() {
+    if (window.pywebview && window.pywebview.api && typeof window.pywebview.api.refresh_backdrop === 'function') {
+      try {
+        window.pywebview.api.refresh_backdrop();
+      } catch (_) {}
+    }
+  }
+
+  window.addEventListener('focus', triggerBackdropRefresh);
+  window.addEventListener('pywebviewready', triggerBackdropRefresh);
+
+  window.addEventListener('DOMContentLoaded', () => {
+    init();
+    setTimeout(triggerBackdropRefresh, 200);
+  });
 })();

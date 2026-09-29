@@ -644,48 +644,10 @@ def _setup_window():
     if not hwnd:
         log("setup: hwnd not found")
         return
-    time.sleep(0.4)
     _hwnd = hwnd
 
-    try:
-        # 1. 确保 WinForms 窗体底色为纯黑，避免 WinForms 默认灰白底色(#F0F0F0)遮挡 DWM Acrylic
-        native = getattr(webview.windows[0], "native", None)
-        if native:
-            import System.Drawing
-            native.BackColor = System.Drawing.Color.Black
-            log("setup: native Form BackColor set to Black")
-    except Exception as e:
-        log("setup: native Form BackColor error: " + repr(e))
-
-    try:
-        # 2. Windows 关键核心调用：扩展磨砂玻璃框架至整个 Client 客户区
-        class MARGINS(ctypes.Structure):
-            _fields_ = [
-                ("cxLeftWidth", ctypes.c_int),
-                ("cxRightWidth", ctypes.c_int),
-                ("cyTopHeight", ctypes.c_int),
-                ("cyBottomHeight", ctypes.c_int),
-            ]
-        margins = MARGINS(-1, -1, -1, -1)
-        hr_extend = dwmapi.DwmExtendFrameIntoClientArea(hwnd, ctypes.byref(margins))
-        log("setup: DwmExtendFrameIntoClientArea hr=" + str(hr_extend))
-
-        # 3. Windows 11 DWM 真实桌面壁纸高斯模糊透光 (Acrylic: DWMSBT_TRANSIENTWINDOW = 3)
-        backdrop_val = ctypes.c_int(3)
-        hr_acrylic = dwmapi.DwmSetWindowAttribute(hwnd, 38, ctypes.byref(backdrop_val), ctypes.sizeof(backdrop_val))
-        log("setup: dwm acrylic result=" + str(hr_acrylic))
-
-        # 4. Windows 系统级圆角 (ROUND = 2)
-        val = ctypes.c_int(2)  # DWMWA_WINDOW_CORNER_PREFERENCE = ROUND
-        dwmapi.DwmSetWindowAttribute(hwnd, 33, ctypes.byref(val), ctypes.sizeof(val))
-        log("setup: dwm corners round")
-
-        # 5. 沉浸式暗色标题/背板 (DWMWA_USE_IMMERSIVE_DARK_MODE = 20)，全软件固定纯正深色
-        dark_val = ctypes.c_int(1)
-        dwmapi.DwmSetWindowAttribute(hwnd, 20, ctypes.byref(dark_val), ctypes.sizeof(dark_val))
-
-    except Exception as e:
-        log("setup: dwm FAIL " + repr(e))
+    # 立即应用首轮 DWM 背景与样式
+    _apply_backdrop(_hwnd)
 
     try:
         # 启用最大化与标准窗口控制样式支持
@@ -698,9 +660,73 @@ def _setup_window():
     except Exception as e:
         log("setup: window style FAIL " + repr(e))
 
+    # 阶段 2 与阶段 3 异步补丁：确保 WebView2 进程与 WinForms 完全就绪后加固毛玻璃穿透
+    def _delayed_backdrop_reinforce():
+        time.sleep(0.5)
+        _apply_backdrop(_hwnd)
+        time.sleep(1.2)
+        _apply_backdrop(_hwnd)
+
+    threading.Thread(target=_delayed_backdrop_reinforce, daemon=True).start()
+
     # 启动全场景置顶守护线程
     threading.Thread(target=_topmost_watchdog, daemon=True).start()
     log("setup: topmost watchdog daemon started")
+
+
+def _apply_backdrop(target_hwnd=None):
+    """设置 Windows 11 DWM 系统级亚克力/云母模糊穿透 (多级容灾)"""
+    hwnd = target_hwnd or _hwnd
+    if not hwnd or sys.platform != "win32":
+        return False
+    try:
+        import ctypes
+        from ctypes import wintypes
+        dwmapi = ctypes.windll.dwmapi
+
+        # 1. 确保 WinForms 窗体底色为纯黑，避免 WinForms 默认灰白底色(#F0F0F0)遮挡 DWM Acrylic
+        try:
+            native = getattr(webview.windows[0], "native", None) if getattr(webview, "windows", None) else None
+            if native:
+                import System.Drawing
+                native.BackColor = System.Drawing.Color.Black
+        except Exception:
+            pass
+
+        # 2. Windows 关键核心调用：扩展磨砂玻璃框架至整个 Client 客户区
+        class MARGINS(ctypes.Structure):
+            _fields_ = [
+                ("cxLeftWidth", ctypes.c_int),
+                ("cxRightWidth", ctypes.c_int),
+                ("cyTopHeight", ctypes.c_int),
+                ("cyBottomHeight", ctypes.c_int),
+            ]
+        margins = MARGINS(-1, -1, -1, -1)
+        hr_extend = dwmapi.DwmExtendFrameIntoClientArea(hwnd, ctypes.byref(margins))
+
+        # 3. Windows 11 DWM 真实桌面壁纸高斯模糊透光
+        # 默认 3 (Acrylic: 晶莹透视)，支持由环境变量 TOKEN_VIEWER_BACKDROP 设为 4 (Mica Alt) 或 2 (Mica)
+        b_val = 3
+        try:
+            b_val = int(os.environ.get("TOKEN_VIEWER_BACKDROP", "3"))
+        except Exception:
+            b_val = 3
+        backdrop_val = ctypes.c_int(b_val)
+        hr_acrylic = dwmapi.DwmSetWindowAttribute(hwnd, 38, ctypes.byref(backdrop_val), ctypes.sizeof(backdrop_val))
+
+        # 4. Windows 系统级圆角 (ROUND = 2)
+        val = ctypes.c_int(2)  # DWMWA_WINDOW_CORNER_PREFERENCE = ROUND
+        dwmapi.DwmSetWindowAttribute(hwnd, 33, ctypes.byref(val), ctypes.sizeof(val))
+
+        # 5. 沉浸式暗色标题/背板 (DWMWA_USE_IMMERSIVE_DARK_MODE = 20)
+        dark_val = ctypes.c_int(1)
+        dwmapi.DwmSetWindowAttribute(hwnd, 20, ctypes.byref(dark_val), ctypes.sizeof(dark_val))
+
+        log(f"backdrop applied: hr_extend={hr_extend}, hr_acrylic={hr_acrylic}, type={b_val}")
+        return True
+    except Exception as e:
+        log("backdrop apply FAIL: " + repr(e))
+        return False
 
 
 def _exit_now():
@@ -719,6 +745,10 @@ def _exit_now():
 class JsApi:
     def exit_app(self):
         _exit_now()
+
+    def refresh_backdrop(self):
+        """前端页面 DOM 加载或焦点恢复时补刷 DWM 背景"""
+        return _apply_backdrop(_hwnd)
 
     def _win(self):
         import ctypes
@@ -1173,6 +1203,12 @@ def main():
             width=width, height=height, resizable=True, frameless=True, easy_drag=False,
             transparent=True, min_size=(180, 36), js_api=api)
         window.events.closing += _exit_now
+
+        def _on_loaded():
+            log("window loaded event fired: reinforcing backdrop")
+            _apply_backdrop()
+
+        window.events.loaded += _on_loaded
         threading.Thread(target=_setup_window, daemon=True).start()
         # storage_path：WebView2 持久数据目录固定到 ~/.codex/token_viewer_webview，
         # 避免每次启动重建浏览器环境，显著加快后续启动。
