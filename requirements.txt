@@ -1,0 +1,8 @@
+# Runtime dependencies
+fastapi>=0.141.1
+uvicorn>=0.51.0
+pywebview>=6.2.1
+pystray>=0.19.5
+
+# Packaging (only needed to build the exe with package.ps1)
+pyinstaller>=6.21.0

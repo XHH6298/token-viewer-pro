@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="zh" data-theme="dark" data-lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TokenViewer Pro</title>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="icon" type="image/png" href="/static/icon.png">
+</head>
+<body>
+<!-- 纯正黑水晶毛玻璃开机丝滑过渡 (Liquid Glass Startup Transition) -->
+<div class="app-glass-veil" id="appGlassVeil">
+  <div class="glass-veil-ambient"></div>
+  <div class="glass-veil-center">
+    <div class="glass-veil-brand">
+      <img src="/static/icon.png" class="glass-veil-logo" alt="TokenViewer Pro">
+      <div class="glass-veil-title">TokenViewer <span class="glass-veil-badge">PRO</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="app-window app-entering" id="appWindow">
+  <!-- 左侧 Apple Music 风格侧边栏 (默认收缩态，支持展开) -->
+  <aside class="sidebar collapsed" id="appSidebar">
+    <!-- 1. 顶部区域 -->
+    <div class="sidebar-header">
+      <!-- 展开态完整标题栏 (图2) -->
+      <div class="header-expanded-bar">
+        <div class="brand-title-wrap">
+          <img src="/static/icon.png" class="brand-logo-img" alt="TokenViewer Pro">
+          <span class="brand-name">TokenViewer <span class="brand-pro-badge">PRO</span></span>
+        </div>
+      </div>
+
+      <!-- 收缩态居中 App Logo (图1) -->
+      <div class="header-collapsed-logo">
+        <img src="/static/icon.png" class="collapsed-logo-img" alt="TokenViewer Pro">
+      </div>
+
+      <!-- 汉堡切换按钮 (收缩与展开均展示，图1 & 图2) -->
+      <button class="hamburger-btn" id="sidebarToggleBtn" title="展开 / 折叠侧边栏" type="button">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <line x1="3" y1="6" x2="21" y2="6"/>
+          <line x1="3" y1="12" x2="21" y2="12"/>
+          <line x1="3" y1="18" x2="21" y2="18"/>
+        </svg>
+      </button>
+
+      <!-- 搜索区域：收缩态独立按钮 / 展开态完整搜索框 -->
+      <button class="search-collapsed-btn" id="sidebarSearchBtn" title="搜索模型" type="button">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8"/>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+      </button>
+
+      <div class="search-expanded-box">
+        <input type="text" id="globalSearch" class="sidebar-search-input" placeholder="搜索模型名" spellcheck="false" autocomplete="off" data-i18n-ph="searchPlaceholder">
+        <svg class="search-box-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8"/>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <button class="search-clear-btn" id="searchClearBtn" type="button" title="清空" style="display:none;">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+
+        <!-- 实时模糊搜索结果悬浮面板 (匹配模型调用次数、Token消耗、缓存率、预估金额) -->
+        <div class="search-flyout" id="searchResultsFlyout" hidden style="display:none;">
+          <div class="search-flyout-header">
+            <span class="search-flyout-title" data-i18n="searchModelsTitle">模型统计检索</span>
+            <span class="search-flyout-count" id="searchMatchCount">0 个结果</span>
+          </div>
+          <div class="search-flyout-list" id="searchFlyoutList"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. 导航菜单 (对齐图1与图2图标) -->
+    <nav class="nav-menu">
+      <button class="nav-item active" data-view="dashboard" title="仪表盘" data-i18n-title="dashboard" type="button">
+        <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-6h-4v6H4a1 1 0 0 1-1-1V9.5z"/>
+        </svg>
+        <span class="nav-label" data-i18n="dashboard">仪表盘</span>
+      </button>
+
+      <button class="nav-item" data-view="models" title="模型监控" data-i18n-title="modelMonitor" type="button">
+        <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="7" height="7" rx="1.5"/>
+          <rect x="14" y="3" width="7" height="7" rx="1.5"/>
+          <rect x="14" y="14" width="7" height="7" rx="1.5"/>
+          <rect x="3" y="14" width="7" height="7" rx="1.5"/>
+        </svg>
+        <span class="nav-label" data-i18n="modelMonitor">模型监控</span>
+      </button>
+
+      <button class="nav-item" data-view="tokens" title="Token 消耗" data-i18n-title="tokenUsage" type="button">
+        <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <ellipse cx="12" cy="5" rx="9" ry="3"/>
+          <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/>
+          <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
+        </svg>
+        <span class="nav-label" data-i18n="tokenUsage">Token 消耗</span>
+      </button>
+
+      <button class="nav-item" data-view="logs" title="调用日志" data-i18n-title="apiLogs" type="button">
+        <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="4" y="4" width="16" height="16" rx="2"/>
+          <path d="M8 2h8"/>
+          <line x1="8" y1="9" x2="16" y2="9"/>
+          <line x1="8" y1="13" x2="16" y2="13"/>
+          <line x1="8" y1="17" x2="13" y2="17"/>
+        </svg>
+        <span class="nav-label" data-i18n="apiLogs">调用日志</span>
+      </button>
+
+      <button class="nav-item" data-view="settings" title="系统设置" data-i18n-title="settings" type="button">
+        <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+        <span class="nav-label" data-i18n="settings">系统设置</span>
+      </button>
+    </nav>
+
+    <!-- 3. 底部区域 (用户 / Agent 身份卡片 + 头像更换) -->
+    <div class="sidebar-footer">
+      <div class="user-profile-btn" id="agentSelectorBtn" title="切换 Agent 过滤 / 点击头像更换图片">
+        <!-- 圆形头像区，支持自定义上传与悬浮更换提示 -->
+        <div class="user-avatar" id="userAvatarContainer" title="点击更换自定义头像">
+          <img id="userCustomAvatar" class="custom-avatar-img" alt="Avatar" style="display:none;">
+          <div id="userDefaultAvatarSvg" class="default-avatar-svg">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.6" opacity="0.6"/>
+              <path d="M12 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" fill="currentColor"/>
+              <path d="M6.5 18c0-2.6 2.5-4.5 5.5-4.5s5.5 1.9 5.5 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <!-- 悬浮微型相机指示 -->
+          <div class="avatar-hover-overlay">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+              <circle cx="12" cy="13" r="4"/>
+            </svg>
+          </div>
+        </div>
+
+        <!-- 隐藏的文件上传 input -->
+        <input type="file" id="avatarFileInput" accept="image/*" style="display:none;">
+
+        <div class="user-profile-info" id="userProfileInfo">
+          <span class="user-name" id="currentAgentName">All Agents</span>
+          <span class="user-status"><i class="online-dot"></i> <span data-i18n="online">连接中</span></span>
+        </div>
+        <svg class="chevron-up-down" id="agentChevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+
+        <!-- 浮动选择菜单 (向上展开) -->
+        <div class="agent-dropdown" id="agentDropdown" hidden>
+          <div class="dropdown-header" data-i18n="agentFilterTitle">Agent 过滤</div>
+          <div class="dropdown-item active" data-agent="" data-i18n="allAgentsOption">All Agents</div>
+          <div class="dropdown-item" data-agent="antigravity">Antigravity</div>
+          <div class="dropdown-item" data-agent="claude">Claude Code</div>
+          <div class="dropdown-item" data-agent="codex">Codex</div>
+          <div class="dropdown-item" data-agent="zcode">Zcode</div>
+          <div class="dropdown-item" data-agent="pi">Pi</div>
+          
+          <div class="dropdown-divider"></div>
+          
+          <div class="dropdown-item dropdown-action" id="dropdownChangeAvatar">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            <span data-i18n="changeAvatar">更换自定义头像...</span>
+          </div>
+          <div class="dropdown-item dropdown-action dropdown-reset" id="dropdownResetAvatar" style="display:none;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+            <span data-i18n="resetAvatar">恢复默认头像</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- 右侧主工作区 -->
+  <main class="main-content">
+    <!-- 顶栏：原生拖拽区与 Windows 经典右上角窗口控制按钮 -->
+    <header class="top-header">
+      <div class="top-header-drag"></div>
+
+      <!-- Windows 原生交互：右上角窗口控制按钮组 -->
+      <div class="window-controls">
+        <button class="win-btn win-capsule" id="winCapsuleBtn" title="开启桌面灵动胶囊 (居中置顶/长按拖拽)" data-i18n-title="winCapsule" type="button">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="6" width="20" height="12" rx="6" />
+            <circle cx="7" cy="12" r="2.5" fill="currentColor" />
+          </svg>
+        </button>
+        <button class="win-btn win-min" id="winMin" title="最小化" data-i18n-title="winMin">
+          <svg width="11" height="11" viewBox="0 0 10 10"><line x1="1" y1="5" x2="9" y2="5" stroke="currentColor" stroke-width="1.3"/></svg>
+        </button>
+        <button class="win-btn win-max" id="winMax" title="全屏 (F11)" data-i18n-title="winFullscreen">
+          <svg class="icon-maximize" width="11" height="11" viewBox="0 0 10 10" fill="none"><rect x="1.5" y="1.5" width="7" height="7" stroke="currentColor" stroke-width="1.3"/></svg>
+          <svg class="icon-restore" style="display: none;" width="11" height="11" viewBox="0 0 10 10" fill="none"><path d="M3 1.5h5.5v5.5H3z" stroke="currentColor" stroke-width="1.2"/><path d="M1.5 3.5v5h5" stroke="currentColor" stroke-width="1.2"/></svg>
+        </button>
+        <button class="win-btn win-close" id="winClose" title="关闭" data-i18n-title="winClose">
+          <svg width="11" height="11" viewBox="0 0 10 10"><line x1="1.8" y1="1.8" x2="8.2" y2="8.2" stroke="currentColor" stroke-width="1.3"/><line x1="8.2" y1="1.8" x2="1.8" y2="8.2" stroke="currentColor" stroke-width="1.3"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- 视图 1：Dashboard (主仪表盘) -->
+    <section class="view-panel active" id="view-dashboard">
+      <!-- 标题栏与时间胶囊 + 自动刷新频率控制 -->
+      <div class="view-header">
+        <h1 class="view-title" data-i18n="dashboard">仪表盘</h1>
+        <div class="header-controls">
+          <div class="time-pills" id="timePills">
+            <button class="time-btn active" data-range="today" data-i18n="timeToday">今天</button>
+            <button class="time-btn" data-range="1d" data-i18n="time24h">24小时</button>
+            <button class="time-btn" data-range="7d" data-i18n="time7d">7天</button>
+            <button class="time-btn" data-range="30d" data-i18n="time30d">30天</button>
+            <button class="time-btn" data-range="all" data-i18n="timeAll">全部</button>
+          </div>
+          <div class="refresh-pills" id="refreshPills" title="自动刷新频率">
+            <span class="refresh-label" data-i18n="refreshRate">刷新:</span>
+            <button class="refresh-btn" data-refresh="3">3s</button>
+            <button class="refresh-btn" data-refresh="30">30s</button>
+            <button class="refresh-btn active" data-refresh="60">1m</button>
+          </div>
+          <button class="sub-direct-btn" id="subDirectBtn" title="直达订阅套餐" data-i18n-title="subDirectTitle">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v2a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+              <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+              <line x1="12" y1="22.08" x2="12" y2="12"/>
+            </svg>
+            <span data-i18n="subDirect">订阅套餐</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 第一行：3 联指标卡 -->
+      <div class="metric-grid">
+        <!-- 卡片 1: Active Models -->
+        <div class="metric-card active-models-card" id="openModelsCard" title="查看模型监控明细" data-i18n-title="activeModelsTip">
+          <div class="card-topline">
+            <span class="card-caption" data-i18n="activeModels">活跃模型</span>
+            <svg class="card-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+          </div>
+          <div class="models-list" id="activeModelsList">
+            <div class="model-line" style="color:var(--text-muted)">正在加载...</div>
+          </div>
+        </div>
+
+        <!-- 卡片 2: Total Tokens Used -->
+        <div class="metric-card token-card" id="tokenMetricCard">
+          <div class="card-topline">
+            <span class="card-caption" data-i18n="totalTokensUsed">Token 消耗总量</span>
+            <span class="token-time-pill" id="tokenTimeLabel">24 小时</span>
+          </div>
+          <div class="token-content-grid">
+            <div class="token-info-col">
+              <div class="big-number" id="dashTotalTokens" data-num="0">--</div>
+              <div class="token-trend-sub">
+                <span class="trend-pulse-dot"></span>
+                <span data-i18n="usageTrend">消耗趋势</span>
+              </div>
+            </div>
+            <div class="sparkline-wrap">
+              <canvas id="miniSparkline"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- 卡片 3: Active Projects -->
+        <div class="metric-card projects-card" id="openProjectsCard" title="查看项目与调用日志" data-i18n-title="activeProjectsTip">
+          <div class="card-topline">
+            <span class="card-caption" data-i18n="activeProjects">活跃项目</span>
+            <svg class="card-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+          </div>
+          <div class="big-number" id="dashActiveProjects" data-num="0">--</div>
+          <div class="card-bottomline single">
+            <span class="b-label" data-i18n="projectsUnit">个项目</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 第二行：Token 消耗量 柱状图 -->
+      <div class="consumption-card">
+        <div class="consumption-head">
+          <div class="c-title-group">
+            <h2 class="c-title" data-i18n="tokenConsumption">Token 消耗量</h2>
+            <span class="c-subtitle" id="consumptionSubtitle">用量时间线（最近 24 小时）</span>
+          </div>
+          <div class="c-rate-badge">
+            <span data-i18n="currentRate">当前用量:</span> <b id="currentRate">--</b>
+          </div>
+        </div>
+        <div class="consumption-chart-wrap">
+          <canvas id="consumptionChart"></canvas>
+        </div>
+      </div>
+
+      <!-- 第三行：2 联深度图表卡片 -->
+      <div class="bottom-grid">
+        <!-- 卡片 1: Cost Overview -->
+        <div class="bottom-card cost-overview-card" id="openCostCard" title="查看模型费用明细" data-i18n-title="costOverviewTip">
+          <div class="card-topline">
+            <span class="card-caption" data-i18n="costOverview">费用概览</span>
+            <svg class="card-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+          </div>
+          <div class="cost-stat">
+            <span class="cost-prefix" data-i18n="estimated">预估开销:</span>
+            <span class="cost-value" id="dashTotalCost" data-num="0">$0.00</span>
+          </div>
+          <div class="mini-cost-wrap">
+            <canvas id="miniCostChart"></canvas>
+          </div>
+        </div>
+
+        <!-- 卡片 2: Project Breakdown (环形分布图) -->
+        <div class="bottom-card breakdown-card" id="openBreakdownCard" title="查看项目调用日志 / 点击项目快速过滤" data-i18n-title="projectBreakdownTip">
+          <div class="card-topline">
+            <span class="card-caption" data-i18n="projectBreakdown">项目占比</span>
+            <svg class="card-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+          </div>
+          <div class="donut-container">
+            <div class="donut-chart-wrap">
+              <canvas id="breakdownChart"></canvas>
+            </div>
+            <div class="donut-legend" id="breakdownLegend"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 视图 2：Model Monitor (完整模型监控表格) -->
+    <section class="view-panel" id="view-models">
+      <div class="view-header">
+        <h1 class="view-title" data-i18n="modelMonitor">模型监控</h1>
+        <span class="view-desc" data-i18n="modelMonitorDesc">详细模型调用频次、Token 吞吐、缓存命中率与单价成本</span>
+      </div>
+      <div class="table-card">
+        <table class="pro-table" id="modelsTable">
+          <thead>
+            <tr>
+              <th data-key="_label" data-i18n="thModel">模型名称</th>
+              <th data-key="request_count" class="r" data-i18n="thRequests">调用次数</th>
+              <th data-key="tokens" class="r active" data-i18n="thTokens">Token 消耗 ▾</th>
+              <th data-key="cache_hit_rate" class="r" data-i18n="thCacheRate">缓存率</th>
+              <th data-key="cost" class="r" data-i18n="thCost">预估金额</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 视图 3：Token Usage (Token 细分与缓存深度指标) -->
+    <section class="view-panel" id="view-tokens">
+      <div class="view-header">
+        <h1 class="view-title" data-i18n="tokenUsage">Token 消耗细分</h1>
+        <span class="view-desc" data-i18n="tokenUsageDesc">输入、输出、上下文缓存写入与读取全量分析</span>
+      </div>
+      <div class="token-breakdown-grid">
+        <div class="token-kpi-card">
+          <span class="kpi-title" data-i18n="kpiFreshTitle">全新输入 Token (Fresh)</span>
+          <span class="kpi-val" id="kpiFresh">--</span>
+          <span class="kpi-sub" data-i18n="kpiFreshSub">全新计算上下文输入</span>
+        </div>
+        <div class="token-kpi-card">
+          <span class="kpi-title" data-i18n="kpiCacheTitle">缓存读取 Token (Cache Read)</span>
+          <span class="kpi-val mint" id="kpiCacheRead">--</span>
+          <span class="kpi-sub" data-i18n="kpiCacheSub">命中缓存上下文读取</span>
+        </div>
+        <div class="token-kpi-card">
+          <span class="kpi-title" data-i18n="kpiOutputTitle">输出生成 Token (Output)</span>
+          <span class="kpi-val cyan" id="kpiOutput">--</span>
+          <span class="kpi-sub" data-i18n="kpiOutputSub">模型生成内容与推理 Token</span>
+        </div>
+        <div class="token-kpi-card">
+          <span class="kpi-title" data-i18n="kpiHitRateTitle">综合缓存命中率</span>
+          <span class="kpi-val purple" id="kpiHitRate">--</span>
+          <span class="kpi-sub" data-i18n="kpiHitRateSub">节省的重复计算比例</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 视图 4：API Logs (调用记录与活跃会话) -->
+    <section class="view-panel" id="view-logs">
+      <div class="view-header">
+        <h1 class="view-title" data-i18n="apiLogs">API 调用日志与会话</h1>
+        <span class="view-desc" data-i18n="apiLogsDesc">按会话或工作目录归集的调用历史流</span>
+      </div>
+      <div class="table-card">
+        <table class="pro-table" id="sessionsTable">
+          <thead>
+            <tr>
+              <th data-key="_label" data-i18n="thSession">会话 / 工作目录</th>
+              <th data-key="last_ts" class="r" data-i18n="thLastActive">最近活动时间</th>
+              <th data-key="tokens" class="r active" data-i18n="thTokens">Token 消耗 ▾</th>
+              <th data-key="cache_hit_rate" class="r" data-i18n="thCacheRate">缓存率</th>
+              <th data-key="cost" class="r" data-i18n="thCost">预估金额</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 视图 5：Settings (定价维护、多语言与外观设置) -->
+    <section class="view-panel" id="view-settings">
+      <div class="view-header">
+        <h1 class="view-title" data-i18n="settings">系统设置</h1>
+        <span class="view-desc" data-i18n="settingsDesc">语言切换、系统外观、订阅套餐链接与模型定价基准维护</span>
+      </div>
+      <div class="settings-content">
+        <!-- 1. 语言设置 (默认简体中文，可切换英文) -->
+        <div class="settings-box">
+          <div class="box-info">
+            <h3 class="box-title" data-i18n="langTitle">界面语言 / Language</h3>
+            <p class="box-sub" data-i18n="langSub">切换软件显示语言（默认简体中文）</p>
+          </div>
+          <div class="seg-control" id="proLangSeg">
+            <button data-lang="zh" class="active">简体中文</button>
+            <button data-lang="en">English</button>
+          </div>
+        </div>
+
+        <!-- 2. 界面缩放比例 (适配 2K / 4K 高分屏) -->
+        <div class="settings-box">
+          <div class="box-info">
+            <h3 class="box-title" data-i18n="zoomTitle">界面缩放比例</h3>
+            <p class="box-sub" data-i18n="zoomSub">调整界面显示大小，适配 2K / 4K 高分屏（快捷键 Ctrl + +/-/0）</p>
+          </div>
+          <div class="seg-control" id="proZoomSeg">
+            <button data-zoom="90">90%</button>
+            <button data-zoom="100" class="active">100%</button>
+            <button data-zoom="110">110%</button>
+            <button data-zoom="125">125%</button>
+            <button data-zoom="140">140%</button>
+            <button data-zoom="150">150%</button>
+          </div>
+        </div>
+
+        <!-- 3. 开机启动动画开关 -->
+        <div class="settings-box">
+          <div class="box-info">
+            <h3 class="box-title" data-i18n="splashAnimTitle">开机启动动画</h3>
+            <p class="box-sub" data-i18n="splashAnimSub">开启或关闭软件启动时的沉浸式极光开机动效</p>
+          </div>
+          <div class="seg-control" id="proSplashSeg">
+            <button data-splash="on" class="active" data-i18n="animOn">开启</button>
+            <button data-splash="off" data-i18n="animOff">关闭</button>
+          </div>
+        </div>
+
+        <!-- 4. 订阅链接 -->
+        <div class="settings-box">
+          <div class="box-info">
+            <h3 class="box-title" data-i18n="subUrlTitle">套餐订阅链接</h3>
+            <p class="box-sub" data-i18n="subUrlSub">外部额度控制台或套餐管理直达入口</p>
+          </div>
+          <div class="url-input-group">
+            <input type="text" id="proSubUrl" class="pro-input" placeholder="https://...">
+            <button class="pro-primary-btn" id="proUrlSave" data-i18n="btnSaveUrl">保存链接</button>
+          </div>
+        </div>
+
+        <!-- 4. 模型单价维护 -->
+        <div class="pricing-management-card">
+          <div class="pricing-head">
+            <div class="p-title-group">
+              <h3 class="box-title" data-i18n="pricingTitle">模型定价维护（USD / 每百万 Token）</h3>
+              <p class="box-sub" data-i18n="pricingSub">维护单价后点击保存将立即重新核算全部历史开销</p>
+            </div>
+            <div class="pricing-actions">
+              <button class="pro-ghost-btn" id="proPriceAdd" data-i18n="btnAddModel">+ 新增模型</button>
+              <button class="pro-primary-btn" id="proPriceSave" data-i18n="btnSavePrice">保存并重算</button>
+            </div>
+          </div>
+          <div class="pricing-header-row">
+            <div class="ph-cell ph-model" data-i18n="thPriceModel">模型名称</div>
+            <div class="ph-cell ph-fresh" data-i18n="thPriceFresh">全新输入 ($/1M)</div>
+            <div class="ph-cell ph-cache" data-i18n="thPriceCache">缓存读取 ($/1M)</div>
+            <div class="ph-cell ph-output" data-i18n="thPriceOutput">输出生成 ($/1M)</div>
+            <div class="ph-cell ph-del" data-i18n="thPriceAction">操作</div>
+          </div>
+          <div class="pricing-table-wrap" id="proPriceList"></div>
+          <div class="pricing-status-bar" id="proPriceStatus"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- Apple VisionOS 极光黑水晶灵动岛 (Apple VisionOS Glass Dynamic Island) -->
+<div class="dynamic-island-wrapper" id="dynamicIslandWrapper" style="display:none;">
+  <div class="dynamic-island" id="dynamicIsland" title="点击移动拖拽 / 双击还原仪表盘">
+    <!-- 顶部高光微晶反光弧 -->
+    <div class="island-glass-specular"></div>
+
+    <!-- Left: 呼吸光学状态珠 (Optical Status Gem) -->
+    <div class="island-leading">
+      <div class="island-gem-wrap">
+        <span class="island-gem-halo"></span>
+        <span class="island-gem-core pulse-idle" id="islandGlowDot"></span>
+      </div>
+    </div>
+
+    <!-- Center: 核心遥测指标 (移除廉价闪电，纯粹高定排版层级) -->
+    <div class="island-body">
+      <div class="island-stat-group" title="当日 Token 消耗总量">
+        <span class="island-num island-token-num" id="islandTodayTokens">0</span>
+        <span class="island-unit">tokens</span>
+      </div>
+
+      <div class="island-glass-divider"></div>
+
+      <div class="island-stat-group" title="当日消耗总金额">
+        <span class="island-num island-cost-num" id="islandTodayCost">$0.00</span>
+      </div>
+    </div>
+
+    <!-- Right: 极简流体还原微钮 (Minimalist Glass Restore Glyph) -->
+    <div class="island-trailing">
+      <button class="island-restore-btn" id="islandRestoreBtn" title="还原完整窗口 (双击也可还原)" type="button">
+        <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="10 2 14 2 14 6"/>
+          <polyline points="6 14 2 14 2 10"/>
+          <line x1="14" y1="2" x2="9" y2="7"/>
+          <line x1="2" y1="14" x2="7" y2="9"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+<script src="/static/vendor/chart.umd.min.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>
