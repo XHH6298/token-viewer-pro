@@ -18,6 +18,7 @@ A frosted-glass desktop dashboard that shows real-time **token usage and cost** 
 - **Project breakdown** — donut chart of token share per agent; session list with working directories.
 - **Bilingual UI** — Simplified Chinese / English, switchable at runtime.
 - **Light / dark theme** — follows the system automatically (reads the Windows registry so WebView2 stays in sync).
+- **Auto-recovering Acrylic & Liquid Glass** — combines Windows 11 DWM focus auto-recovery with an Apple Liquid Glass ambient mesh backdrop, eliminating flat solid gray fallbacks on focus loss.
 
 ## Supported agents & data sources
 
@@ -67,6 +68,7 @@ Environment variables (all optional):
 |---|---|---|
 | `TOKEN_VIEWER_DB` | `~/.codex/token_viewer.db` | Location of the app's own SQLite store |
 | `TOKEN_VIEWER_LOG` | `~/.codex/token_viewer.log` | App log file |
+| `TOKEN_VIEWER_BACKDROP` | `3` (Acrylic) | Windows 11 backdrop material: `3` for Acrylic, `4` for Mica Alt (persistent wallpaper tint) |
 
 ## Tests
 

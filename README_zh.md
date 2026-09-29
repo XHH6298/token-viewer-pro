@@ -17,6 +17,7 @@
 - **多维度时间范围** — 支持 今天 / 24小时 / 7天 / 30天 / 全部 视图，提供小时级与天级趋势折线，自动标记峰值（Peak）。
 - **项目与占比透视** — 甜甜圈图直观呈现各 Agent 及项目 Token 占比，支持下钻查看会话详情与工作目录。
 - **双语与双主题适配** — 界面原生支持简中/英文一键热切换；自动感知 Windows 系统注册表的主题变化，无缝同步深色/浅色毛玻璃外观。
+- **自愈式毛玻璃与液态流体微光** — 深度整合 Windows 11 DWM 焦点状态自愈机制与 Apple Liquid Glass 空间微光层，彻底杜绝窗口失焦时的平铺死灰感，任何时刻均保持通透灵动。
 
 ## 支持的 Agent 与数据源
 
@@ -71,6 +72,7 @@ python app.py
 |---|---|---|
 | `TOKEN_VIEWER_DB` | `~/.codex/token_viewer.db` | 本工具专用的 SQLite 聚合数据库存储路径 |
 | `TOKEN_VIEWER_LOG` | `~/.codex/token_viewer.log` | 应用程序日志输出文件路径 |
+| `TOKEN_VIEWER_BACKDROP` | `3` (Acrylic) | Windows 11 背板材质类型：`3` 为 Acrylic 亚克力透视，`4` 为 Mica Alt（失焦不降级纯灰） |
 
 ## 运行自动化测试
 
