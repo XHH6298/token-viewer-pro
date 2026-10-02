@@ -112,10 +112,6 @@
       activeProjectsTip: "查看项目与调用日志",
       costOverviewTip: "查看模型费用明细",
       projectBreakdownTip: "查看项目调用日志 / 点击项目快速过滤",
-      splashAnimTitle: "开机流体过渡",
-      splashAnimSub: "开启或关闭软件启动时的黑水晶毛玻璃平滑过渡",
-      animOn: "开启",
-      animOff: "关闭"
     },
     en: {
       dashboard: "Dashboard",
@@ -224,16 +220,19 @@
       activeProjectsTip: "View project & session logs",
       costOverviewTip: "View model cost breakdown",
       projectBreakdownTip: "View project logs / Click to filter",
-      splashAnimTitle: "Startup Glass Transition",
-      splashAnimSub: "Enable or disable smooth liquid glass startup transition",
-      animOn: "Enabled",
-      animOff: "Disabled"
     }
   };
 
+  for (const [lang, dict] of Object.entries(window.TOKEN_VIEWER_LOCALES || {})) {
+    I18N[lang] = { ...(I18N[lang] || {}), ...dict };
+  }
+  const ZOOM_LEVELS = [90, 100, 110];
+  const normalizeLanguage = lang => Object.hasOwn(I18N, lang) ? lang : 'zh';
+  const locale = () => state.lang === 'zh' ? 'zh-CN' : state.lang;
+
   // State Management (Default language is Chinese 'zh')
   const state = {
-    lang: new URLSearchParams(window.location.search).get('lang') || localStorage.getItem('tokenviewer_lang') || 'zh',
+    lang: normalizeLanguage(new URLSearchParams(window.location.search).get('lang') || localStorage.getItem('tokenviewer_lang') || 'zh'),
     view: 'dashboard',
     range: localStorage.getItem('tokenviewer_range') || 'today',
     agent: '',
@@ -369,7 +368,7 @@
     if (val >= 1e9) return (val / 1e9).toFixed(2) + 'B';
     if (val >= 1e6) return (val / 1e6).toFixed(1) + 'M';
     if (val >= 1e3) return (val / 1e3).toFixed(1) + 'k';
-    return Math.round(val).toLocaleString();
+    return Math.round(val).toLocaleString(locale());
   }
 
   function formatCost(val) {
@@ -493,88 +492,58 @@
     islandTodayCost: document.getElementById('islandTodayCost'),
     islandRestoreBtn: document.getElementById('islandRestoreBtn'),
 
-    // 开机黑水晶毛玻璃平滑过渡 (Liquid Glass Startup Transition)
-    appGlassVeil: document.getElementById('appGlassVeil'),
-    proSplashSeg: document.getElementById('proSplashSeg'),
     appWindow: document.getElementById('appWindow')
   };
 
-  // ==========================================================================
-  // 纯正黑水晶毛玻璃开机丝滑过渡 (Liquid Glass Startup Transition)
-  // 无假自检、无假进度条，纯物理光学消融 (~400ms)
-  // ==========================================================================
-  function setupStartupTransition() {
-    if (!el.appGlassVeil) return;
-
-    // 检查用户是否在设置中关闭了开机动效
-    const splashDisabled = localStorage.getItem('tokenviewer_splash_disabled') === '1';
-
-    // 初始化设置面板中的切换按钮
-    if (el.proSplashSeg) {
-      const btns = el.proSplashSeg.querySelectorAll('button');
-      btns.forEach(b => {
-        const val = b.getAttribute('data-splash');
-        if ((splashDisabled && val === 'off') || (!splashDisabled && val === 'on')) {
-          b.classList.add('active');
-        } else {
-          b.classList.remove('active');
-        }
-        b.addEventListener('click', () => {
-          btns.forEach(x => x.classList.remove('active'));
-          b.classList.add('active');
-          const isOff = val === 'off';
-          localStorage.setItem('tokenviewer_splash_disabled', isOff ? '1' : '0');
-        });
-      });
-    }
-
-    // 若用户主动关闭了启动动效，直接瞬时移除
-    if (splashDisabled) {
-      el.appGlassVeil.style.display = 'none';
-      if (el.appWindow) {
-        el.appWindow.classList.remove('app-entering');
-        el.appWindow.classList.add('app-ready');
-      }
+  function setupStartupEntrance() {
+    const root = el.appWindow;
+    if (!root || !root.hasAttribute('data-startup')) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      root.removeAttribute('data-startup');
       return;
     }
 
-    let dismissed = false;
-    function dismissVeil() {
-      if (dismissed) return;
-      dismissed = true;
-
-      if (el.appGlassVeil) {
-        el.appGlassVeil.classList.add('veil-dismissed');
-      }
-      if (el.appWindow) {
-        el.appWindow.classList.remove('app-entering');
-        el.appWindow.classList.add('app-ready');
-      }
-      setTimeout(() => {
-        if (el.appGlassVeil) {
-          el.appGlassVeil.style.display = 'none';
-        }
-      }, 440);
+    const listeners = new AbortController();
+    const startedAt = performance.now();
+    let finished = false;
+    let frame = null;
+    let entranceAnimations = [];
+    function finish() {
+      if (finished) return;
+      finished = true;
+      if (frame !== null) cancelAnimationFrame(frame);
+      entranceAnimations.forEach(animation => animation.cancel());
+      root.removeAttribute('data-startup');
+      root.style.removeProperty('--startup-preparation');
+      listeners.abort();
     }
 
-    // 首屏数据返回与消融触发（保持轻柔呼吸约 360ms，最长 1200ms 强制进入）
-    const startTime = Date.now();
-    window.notifyAppReady = () => {
-      const elapsed = Date.now() - startTime;
-      const minDisplay = 360;
-      if (elapsed < minDisplay) {
-        setTimeout(dismissVeil, minDisplay - elapsed);
-      } else {
-        dismissVeil();
-      }
-    };
+    // Entry must never hold up user input or play later after restoring the app.
+    root.addEventListener('pointerdown', finish, { capture: true, signal: listeners.signal });
+    document.addEventListener('keydown', finish, { capture: true, signal: listeners.signal });
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) finish();
+    }, { signal: listeners.signal });
 
-    // 最长 1.2s 超时兜底消融
-    setTimeout(dismissVeil, 1200);
+    // One layout frame after language, zoom and sidebar preferences are applied.
+    // Data fetching is independent; glass backgrounds keep their final opacity.
+    frame = requestAnimationFrame(() => {
+      frame = null;
+      if (finished) return;
+      const preparation = performance.now() - startedAt;
+      if (preparation >= 260) {
+        finish();
+        return;
+      }
+      root.style.setProperty('--startup-preparation', `${preparation}ms`);
+      root.dataset.startup = 'playing';
+      entranceAnimations = root.getAnimations({ subtree: true })
+        .filter(animation => animation.animationName === 'startup-content-entry');
+      Promise.allSettled(entranceAnimations.map(animation => animation.finished)).then(finish);
+    });
   }
 
   function init() {
-    setupStartupTransition();
     setupLanguage();
     setupAvatar();
     setupSidebar();
@@ -591,14 +560,11 @@
     setupSettings();
     setupKeyboardAndZoom();
     setupDynamicIsland();
+    setupStartupEntrance();
 
     // Load initial settings and fetch
     loadSettings();
-    refreshAll().finally(() => {
-      if (typeof window.notifyAppReady === 'function') {
-        window.notifyAppReady();
-      }
-    });
+    refreshAll();
 
     // Heartbeat check for connection status
     setInterval(pollStatus, 4000);
@@ -618,6 +584,7 @@
       el.sidebarToggleBtn.addEventListener('click', () => {
         if (!el.sidebar) return;
         const nowCollapsed = el.sidebar.classList.toggle('collapsed');
+        el.sidebarToggleBtn.title = t(nowCollapsed ? 'expandSidebar' : 'collapseSidebar');
         localStorage.setItem('tokenviewer_sidebar_collapsed', nowCollapsed ? '1' : '0');
         if (nowCollapsed || !(el.globalSearch && el.globalSearch.value.trim())) {
           hideSearchFlyout();
@@ -654,26 +621,18 @@
     }, 250);
   }
 
-  // 1. Language System (Default Chinese, Switchable to English)
+  // Language selection uses native names so users can always find their language.
   function setupLanguage() {
     applyLanguage(state.lang);
-
     if (el.proLangSeg) {
-      el.proLangSeg.querySelectorAll('button').forEach(btn => {
-        if (btn.getAttribute('data-lang') === state.lang) btn.classList.add('active');
-        else btn.classList.remove('active');
-
-        btn.addEventListener('click', () => {
-          el.proLangSeg.querySelectorAll('button').forEach(b => b.classList.remove('active'));
-          btn.classList.add('active');
-          const lang = btn.getAttribute('data-lang');
-          setLanguage(lang);
-        });
-      });
+      el.proLangSeg.addEventListener('pointerdown', () => { el.proLangSeg.dataset.motion = 'pointer'; });
+      el.proLangSeg.addEventListener('keydown', () => { el.proLangSeg.dataset.motion = 'instant'; });
+      el.proLangSeg.addEventListener('change', () => setLanguage(el.proLangSeg.value));
     }
   }
 
   function setLanguage(lang) {
+    lang = normalizeLanguage(lang);
     state.lang = lang;
     localStorage.setItem('tokenviewer_lang', lang);
     applyLanguage(lang);
@@ -686,8 +645,14 @@
   }
 
   function applyLanguage(lang) {
+    state.lang = normalizeLanguage(lang);
+    lang = state.lang;
+    if (el.proLangSeg) el.proLangSeg.value = lang;
     document.documentElement.setAttribute('data-lang', lang);
-    document.documentElement.setAttribute('lang', lang);
+    document.documentElement.setAttribute('lang', locale());
+    document.querySelectorAll('[data-i18n-aria]').forEach(elem => {
+      elem.setAttribute('aria-label', t(elem.getAttribute('data-i18n-aria')));
+    });
 
     // Update all text nodes with data-i18n
     document.querySelectorAll('[data-i18n]').forEach(elem => {
@@ -707,6 +672,9 @@
       elem.title = t(key);
     });
 
+    document.querySelectorAll('.pricing-del-btn').forEach(btn => { btn.title = t('deleteModel'); });
+    if (el.sidebarToggleBtn) el.sidebarToggleBtn.title = t(el.sidebar.classList.contains('collapsed') ? 'expandSidebar' : 'collapseSidebar');
+
     // Update Agent label
     if (!state.agent) {
       el.currentAgentName.textContent = t('allAgents');
@@ -720,6 +688,9 @@
 
     // Rebuild charts with localized labels
     rebuildCharts();
+    if (state.dashboardData) renderDashboard(state.dashboardData);
+    if (state.view === 'models') renderModelsTable();
+    if (state.view === 'logs') renderSessionsTable();
   }
 
   function updateTimelineLabel() {
@@ -862,6 +833,13 @@
       if (e.button !== 0) return;
       if (!(window.pywebview && window.pywebview.api)) return;
       if (e.target.closest('button, a, input, textarea, select, .pricing-table-wrap, .pro-table, canvas, .dropdown-item, .window-controls, #dynamicIslandWrapper, #dynamicIsland')) return;
+      // Keep the page scrollbar's hit area available for scrolling, not window dragging.
+      const scrollPanel = e.target.closest('.view-panel');
+      if (scrollPanel && scrollPanel.scrollHeight > scrollPanel.clientHeight) {
+        const rect = scrollPanel.getBoundingClientRect();
+        const gutter = (scrollPanel.offsetWidth - scrollPanel.clientWidth) * rect.width / scrollPanel.offsetWidth;
+        if (gutter > 0 && e.clientX >= rect.right - gutter && e.clientX <= rect.right) return;
+      }
       window.pywebview.api.drag_begin();
       window.addEventListener('mousemove', onMouseMove);
       window.addEventListener('mouseup', onMouseUp);
@@ -997,7 +975,7 @@
         const file = e.target.files && e.target.files[0];
         if (!file) return;
         if (!file.type.startsWith('image/')) {
-          alert(state.lang === 'zh' ? '请选择图片文件 (PNG, JPG, WebP等)' : 'Please select an image file');
+          alert(t('msgSelectImage'));
           return;
         }
 
@@ -1350,7 +1328,7 @@
     let html = '';
     matches.slice(0, 10).forEach(m => {
       const vendor = getVendorBadge(m.model);
-      const reqFmt = (m.request_count || 0).toLocaleString();
+      const reqFmt = (m.request_count || 0).toLocaleString(locale());
       const tokenFmt = formatTokens(m.tokens || 0);
       const cacheFmt = formatPct(m.cache_hit_rate || 0);
       const costFmt = formatCost(m.cost || 0);
@@ -1745,7 +1723,7 @@
             cornerRadius: 8,
             displayColors: false,
             callbacks: {
-              label: (ctx) => `Tokens: ${Math.round(ctx.parsed.y).toLocaleString()}`
+              label: (ctx) => `Tokens: ${Math.round(ctx.parsed.y).toLocaleString(locale())}`
             }
           }
         },
@@ -2013,7 +1991,7 @@
       const color = bgColors[idx];
       const isSelected = (state.agent && state.agent.toLowerCase() === (item.name || '').toLowerCase());
       legendHtml += `
-        <div class="legend-item ${isSelected ? 'selected' : ''}" data-index="${idx}" data-agent="${escapeHtml(item.name || '')}" title="点击过滤 ${escapeHtml(item.label || item.name)}">
+        <div class="legend-item ${isSelected ? 'selected' : ''}" data-index="${idx}" data-agent="${escapeHtml(item.name || '')}" title="${t('filterProject')} ${escapeHtml(item.label || item.name)}">
           <div class="legend-label">
             <span class="legend-dot" style="background:${color}"></span>
             <span>${escapeHtml(item.label || item.name)}</span>
@@ -2178,7 +2156,7 @@
       html += `
         <tr>
           <td title="${name}"><b>${name}</b></td>
-          <td class="r">${(m.request_count || 0).toLocaleString()}</td>
+          <td class="r">${(m.request_count || 0).toLocaleString(locale())}</td>
           <td class="r">${formatTokens(m.tokens || 0)}</td>
           <td class="r">${formatPct(m.cache_hit_rate || 0)}</td>
           <td class="r">${formatCost(m.cost || 0)}</td>
@@ -2226,7 +2204,7 @@
     function formatTime(val) {
       if (!val) return '--';
       const d = typeof val === 'number' ? new Date(val > 1e11 ? val : val * 1000) : new Date(val);
-      return isNaN(d.getTime()) ? String(val) : d.toLocaleString();
+      return isNaN(d.getTime()) ? String(val) : d.toLocaleString(locale());
     }
 
     let html = '';
@@ -2286,11 +2264,11 @@
           <input type="number" step="any" min="0" class="p-fresh" value="${item.input_per_million || 0}" placeholder="0.00" title="${t('thPriceFresh')}">
           <input type="number" step="any" min="0" class="p-cache" value="${item.cache_read_per_million || 0}" placeholder="0.00" title="${t('thPriceCache')}">
           <input type="number" step="any" min="0" class="p-output" value="${item.output_per_million || 0}" placeholder="0.00" title="${t('thPriceOutput')}">
-          <button class="pricing-del-btn" title="${t('thPriceAction') || '删除'}">✕</button>
+          <button class="pricing-del-btn" title="${t('deleteModel')}">✕</button>
         </div>
       `;
     });
-    el.proPriceList.innerHTML = html || `<div style="color:var(--text-muted);padding:14px;text-align:center;font-size:12px;">暂无定价配置</div>`;
+    el.proPriceList.innerHTML = html || `<div style="color:var(--text-muted);padding:14px;text-align:center;font-size:12px;">${t('noPricing')}</div>`;
 
     el.proPriceList.querySelectorAll('.pricing-del-btn').forEach(btn => {
       btn.addEventListener('click', async (e) => {
@@ -2303,7 +2281,7 @@
             showPriceStatus(t('msgPriceDel'));
             refreshAll();
           } catch (err) {
-            showPriceStatus('删除失败 / Delete failed');
+            showPriceStatus(t('msgDeleteFailed'));
           }
         } else {
           row.remove();
@@ -2317,7 +2295,7 @@
       el.proUrlSave.addEventListener('click', async () => {
         const url = el.proSubUrl.value.trim();
         if (url && !/^https?:\/\//i.test(url)) {
-          showPriceStatus(state.lang === 'zh' ? '链接需以 http:// 或 https:// 开头' : 'URL must start with http:// or https://');
+          showPriceStatus(t('msgInvalidUrl'));
           return;
         }
         try {
@@ -2329,7 +2307,7 @@
           state.subscriptionUrl = url;
           showPriceStatus(t('msgUrlSaved'));
         } catch (e) {
-          showPriceStatus('保存失败 / Save failed');
+          showPriceStatus(t('msgSaveFailed'));
         }
       });
     }
@@ -2339,11 +2317,11 @@
         const row = document.createElement('div');
         row.className = 'pricing-row';
         row.innerHTML = `
-          <input type="text" class="p-model-name" placeholder="模型标识 (如 gpt-5)" title="模型标识">
+          <input type="text" class="p-model-name" placeholder="${t('modelPlaceholder')}" title="${t('modelIdentifier')}">
           <input type="number" step="any" min="0" class="p-fresh" value="0.00" placeholder="0.00" title="${t('thPriceFresh')}">
           <input type="number" step="any" min="0" class="p-cache" value="0.00" placeholder="0.00" title="${t('thPriceCache')}">
           <input type="number" step="any" min="0" class="p-output" value="0.00" placeholder="0.00" title="${t('thPriceOutput')}">
-          <button class="pricing-del-btn" title="删除">✕</button>
+          <button class="pricing-del-btn" title="${t('deleteModel')}">✕</button>
         `;
         row.querySelector('.pricing-del-btn').addEventListener('click', () => row.remove());
         el.proPriceList.prepend(row);
@@ -2382,7 +2360,7 @@
           showPriceStatus(t('msgPriceSaved'));
           refreshAll();
         } catch (e) {
-          showPriceStatus('保存失败 / Save failed: ' + e.message);
+          showPriceStatus(t('msgSaveFailed') + ': ' + e.message);
         }
       });
     }
@@ -2398,7 +2376,10 @@
   }
 
   function applyZoom(percent) {
-    percent = Math.min(Math.max(percent, 80), 180);
+    const requested = Number(percent);
+    percent = Number.isFinite(requested)
+      ? ZOOM_LEVELS.reduce((nearest, level) => Math.abs(level - requested) < Math.abs(nearest - requested) ? level : nearest, 100)
+      : 100;
     state.zoom = percent;
     localStorage.setItem('tokenviewer_zoom', percent.toString());
     document.documentElement.style.zoom = (percent / 100).toString();
@@ -2448,7 +2429,7 @@
     window.addEventListener('wheel', (e) => {
       if (e.ctrlKey) {
         e.preventDefault();
-        const delta = e.deltaY < 0 ? 5 : -5;
+        const delta = e.deltaY < 0 ? 10 : -10;
         applyZoom(state.zoom + delta);
       }
     }, { passive: false });

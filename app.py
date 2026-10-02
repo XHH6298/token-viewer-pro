@@ -49,6 +49,7 @@ else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 DEFAULT_PORT = 18377
+UI_REVISION = "20261002-light-entrance"
 
 
 def _background_log_scanner():
@@ -394,6 +395,8 @@ def api_settings():
 @app.put("/api/settings")
 def api_settings_update(data: SettingsUpdate):
     global _subscription_url, _theme, _language
+    if data.language is not None and data.language not in SUPPORTED_LANGUAGES:
+        return JSONResponse({"error": "invalid language"}, status_code=400)
     if data.subscription_url is not None:
         url = (data.subscription_url or "").strip()
         if not _valid_url(url):
@@ -401,7 +404,7 @@ def api_settings_update(data: SettingsUpdate):
         _subscription_url = url
         db.set_setting("subscription_url", url)
     if data.language is not None:
-        if data.language in ("zh", "en"):
+        if data.language in SUPPORTED_LANGUAGES:
             _language = data.language
             db.set_setting("language", _language)
     if data.theme is not None:
@@ -509,7 +512,8 @@ def favicon():
 
 @app.get("/")
 def index():
-    return FileResponse(os.path.join(STATIC_DIR, "index.html"))
+    return FileResponse(os.path.join(STATIC_DIR, "index.html"),
+                        headers={"Cache-Control": "no-store"})
 
 
 def find_free_port(start=DEFAULT_PORT, count=30):
@@ -555,6 +559,12 @@ _subscription_url = config.SUBSCRIPTION_URL  # 订阅套餐链接（可在设置
 _theme = "auto"
 _language = "zh"  # 外观：auto(跟随系统)/light/dark，持久化到 DB
 _is_capsule = False  # 是否处于桌面灵动胶囊模式
+SUPPORTED_LANGUAGES = ("zh", "zh-TW", "en", "ja", "ko", "fr", "de", "es", "pt", "ru", "it")
+_backdrop_refresh_pending = False
+_backdrop_surface_hwnd = 0
+_backdrop_surface_timer = None
+_frame_procs = {}
+_frame_proc_refs = []
 
 
 def _topmost_watchdog():
@@ -584,146 +594,233 @@ def update_dwm_theme(is_dark: bool):
         log("update_dwm_theme FAIL: " + repr(e))
 
 
+def _queue_backdrop_refresh(*_args):
+    """Coalesce native events and apply after WinForms finishes its state change."""
+    global _backdrop_refresh_pending
+    native = getattr(window, "native", None) if window else None
+    if native is None or native.IsDisposed or not native.IsHandleCreated:
+        return
+    if _backdrop_refresh_pending:
+        return
+    _backdrop_refresh_pending = True
+    from System import Action
+
+    def refresh():
+        global _backdrop_refresh_pending
+        _backdrop_refresh_pending = False
+        _apply_backdrop()
+
+    try:
+        native.BeginInvoke(Action(refresh))
+    except Exception as e:
+        _backdrop_refresh_pending = False
+        log("backdrop queue FAIL: " + repr(e))
+
+
 def _setup_window():
-    """窗口后配置：DWM 圆角 + WM_NCHITTEST 边缘 resize。"""
-    global _hwnd
+    """Run on before_show, once WinForms and WebView2 controls exist."""
+    if sys.platform != "win32":
+        return
+    native = getattr(window, "native", None)
+    if native is None:
+        return
+    # These events also cover HWND recreation and restore after fullscreen.
+    native.HandleCreated += _queue_backdrop_refresh
+    native.Activated += _queue_backdrop_refresh
+    native.Resize += _queue_backdrop_refresh
+    native.Shown += _queue_backdrop_refresh
+    native.MaximizeBox = True
+    native.MinimizeBox = True
+    _apply_backdrop()
+    threading.Thread(target=_topmost_watchdog, daemon=True).start()
+    log("setup: native lifecycle effects installed")
+
+
+def _prime_backdrop_surface():
+    """Rebuild the initial WinForms composition surface with a one-pixel resize.
+
+    Reapplying DWM attributes alone does not fix its initial opaque surface.
+    Keep the original size and restore it on the next UI tick, without changing
+    fullscreen state, focus, position, or the user's saved window dimensions.
+    """
+    global _backdrop_surface_hwnd, _backdrop_surface_timer
+    native = getattr(window, "native", None) if window else None
+    if native is None or native.IsDisposed or not native.IsHandleCreated:
+        return
+    if native.InvokeRequired:
+        from System import Action
+        native.Invoke(Action(_prime_backdrop_surface))
+        return
+    hwnd = int(native.Handle.ToInt64())
+    if _backdrop_surface_hwnd == hwnd or _is_capsule or native.is_fullscreen:
+        return
+    from System.Drawing import Size
+    from System.Windows.Forms import Timer
+    _backdrop_surface_hwnd = hwnd
+    size = native.Size
+    timer = Timer()
+    timer.Interval = 32
+
+    def restore_size(*_args):
+        global _backdrop_surface_timer
+        timer.Stop()
+        timer.Dispose()
+        _backdrop_surface_timer = None
+        if native.IsDisposed or _is_capsule or native.is_fullscreen:
+            return
+        # Do not overwrite a concurrent user resize.
+        if native.Width == size.Width + 1 and native.Height == size.Height:
+            native.Size = size
+        _apply_backdrop()
+        log("backdrop: initial composition surface rebuilt")
+
+    timer.Tick += restore_size
+    _backdrop_surface_timer = timer
+    native.Size = Size(size.Width + 1, size.Height)
+    timer.Start()
+
+
+def _configure_window_frame(native):
+    """Keep a resizable DWM frame while drawing all non-client space ourselves.
+
+    WS_THICKFRAME lets DWM actually round a restored frameless window. Handling
+    WM_NCCALCSIZE keeps that frame from adding a visible system border/title bar.
+    """
     import ctypes
     from ctypes import wintypes
     user32 = ctypes.windll.user32
-    dwmapi = ctypes.windll.dwmapi
-    user32.GetWindowLongPtrW.restype = ctypes.c_ssize_t
+    hwnd = int(native.Handle.ToInt64())
     user32.GetWindowLongPtrW.argtypes = [wintypes.HWND, ctypes.c_int]
-    user32.SetWindowLongPtrW.restype = ctypes.c_ssize_t
+    user32.GetWindowLongPtrW.restype = ctypes.c_ssize_t
     user32.SetWindowLongPtrW.argtypes = [wintypes.HWND, ctypes.c_int, ctypes.c_ssize_t]
-    user32.CallWindowProcW.restype = ctypes.c_long
-    user32.CallWindowProcW.argtypes = [ctypes.c_ssize_t, wintypes.HWND, wintypes.UINT,
-                                       wintypes.WPARAM, wintypes.LPARAM]
+    user32.SetWindowLongPtrW.restype = ctypes.c_ssize_t
+    user32.CallWindowProcW.argtypes = [ctypes.c_ssize_t, wintypes.HWND,
+        wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
+    user32.CallWindowProcW.restype = ctypes.c_ssize_t
+    user32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
+    user32.GetDpiForWindow.argtypes = [wintypes.HWND]
+    user32.IsZoomed.argtypes = [wintypes.HWND]
+    user32.IsIconic.argtypes = [wintypes.HWND]
+    if hwnd not in _frame_procs:
+        original_proc = user32.GetWindowLongPtrW(hwnd, -4)
+        WNDPROC = ctypes.WINFUNCTYPE(ctypes.c_ssize_t, wintypes.HWND,
+            wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM)
 
-    def _get_hwnd():
-        try:
-            native = getattr(webview.windows[0], "native", None)
-            handle = getattr(native, "Handle", None)
-            if handle is None:
-                return 0
-            val = int(handle.ToInt64()) if hasattr(handle, "ToInt64") else int(handle)
-            return val or 0
-        except Exception:
-            return 0
+        def wndproc(h, message, wparam, lparam):
+            try:
+                if message == 0x0083:  # WM_NCCALCSIZE, both RECT forms
+                    return 0
+                if message == 0x0086 and not _is_capsule and not user32.IsIconic(h):
+                    # Keep DWM's visual material active, without changing actual
+                    # activation/focus (WM_ACTIVATE / WM_SETFOCUS are untouched).
+                    user32.CallWindowProcW(original_proc, h, message, 1, lparam)
+                    return 1  # Always permit the real window to deactivate.
+                if message == 0x0084:  # WM_NCHITTEST
+                    if _is_capsule or native.is_fullscreen or user32.IsZoomed(h):
+                        return 1  # HTCLIENT
+                    rect = wintypes.RECT()
+                    user32.GetWindowRect(h, ctypes.byref(rect))
+                    x = ctypes.c_short(lparam & 0xFFFF).value
+                    y = ctypes.c_short((lparam >> 16) & 0xFFFF).value
+                    edge = max(4, round(6 * user32.GetDpiForWindow(h) / 96))
+                    left, right = x < rect.left + edge, x >= rect.right - edge
+                    top, bottom = y < rect.top + edge, y >= rect.bottom - edge
+                    if top:
+                        return 13 if left else 14 if right else 12
+                    if bottom:
+                        return 16 if left else 17 if right else 15
+                    if left or right:
+                        return 10 if left else 11
+                if message == 0x0082:  # WM_NCDESTROY: handle may be reused.
+                    _frame_procs.pop(int(h), None)
+            except Exception as e:
+                log("custom frame FAIL: " + repr(e))
+            return user32.CallWindowProcW(original_proc, h, message, wparam, lparam)
 
-    def _find_own_window():
-        """按进程 PID 限定查找本实例窗口，避免多实例并存时抓到别的 'Token' 窗口。"""
-        try:
-            pid = os.getpid()
-            found = []
-            EnumWindowsProc = ctypes.WINFUNCTYPE(
-                wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+        callback = WNDPROC(wndproc)
+        _frame_proc_refs.append(callback)  # Keep callbacks alive through WM_NCDESTROY.
+        user32.SetWindowLongPtrW(hwnd, -4, ctypes.cast(callback, ctypes.c_void_p).value)
+        _frame_procs[hwnd] = original_proc
 
-            def cb(hwnd, _lp):
-                wpid = wintypes.DWORD()
-                user32.GetWindowThreadProcessId(hwnd, ctypes.byref(wpid))
-                if wpid.value == pid:
-                    n = user32.GetWindowTextLengthW(hwnd)
-                    if n > 0:
-                        buf = ctypes.create_unicode_buffer(n + 1)
-                        user32.GetWindowTextW(hwnd, buf, n + 1)
-                        if buf.value == "TokenViewer Pro":
-                            found.append(hwnd)
-                return True
-
-            user32.EnumWindows(EnumWindowsProc(cb), 0)
-            return found[0] if found else 0
-        except Exception:
-            return 0
-
-    hwnd = 0
-    for _ in range(60):
-        hwnd = _get_hwnd() or _find_own_window()
-        if hwnd:
-            break
-        time.sleep(0.25)
-    if not hwnd:
-        log("setup: hwnd not found")
-        return
-    _hwnd = hwnd
-
-    # 立即应用首轮 DWM 背景与样式
-    _apply_backdrop(_hwnd)
-
-    try:
-        # 启用最大化与标准窗口控制样式支持
-        style = user32.GetWindowLongW(hwnd, -16)  # GWL_STYLE
-        style |= 0x00010000  # WS_MAXIMIZEBOX
-        style |= 0x00020000  # WS_MINIMIZEBOX
-        style |= 0x00080000  # WS_SYSMENU
-        user32.SetWindowLongW(hwnd, -16, style)
-        log("setup: window maximize & sysmenu enabled")
-    except Exception as e:
-        log("setup: window style FAIL " + repr(e))
-
-    # 阶段 2 与阶段 3 异步补丁：确保 WebView2 进程与 WinForms 完全就绪后加固毛玻璃穿透
-    def _delayed_backdrop_reinforce():
-        time.sleep(0.5)
-        _apply_backdrop(_hwnd)
-        time.sleep(1.2)
-        _apply_backdrop(_hwnd)
-
-    threading.Thread(target=_delayed_backdrop_reinforce, daemon=True).start()
-
-    # 启动全场景置顶守护线程
-    threading.Thread(target=_topmost_watchdog, daemon=True).start()
-    log("setup: topmost watchdog daemon started")
+    style = user32.GetWindowLongPtrW(hwnd, -16)
+    new_style = style & ~0x00040000 if native.is_fullscreen else style | 0x00040000
+    if new_style != style:
+        user32.SetWindowLongPtrW(hwnd, -16, new_style)
+        user32.SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND,
+            ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, wintypes.UINT]
+        user32.SetWindowPos(hwnd, None, 0, 0, 0, 0,
+                            0x0001 | 0x0002 | 0x0004 | 0x0010 | 0x0020)
 
 
 def _apply_backdrop(target_hwnd=None):
-    """设置 Windows 11 DWM 系统级亚克力/云母模糊穿透 (多级容灾)"""
-    hwnd = target_hwnd or _hwnd
-    if not hwnd or sys.platform != "win32":
+    """Apply backdrop to the current HWND on its owning UI thread."""
+    global _hwnd, _backdrop_surface_hwnd
+    if sys.platform != "win32":
+        return False
+    native = getattr(window, "native", None) if window else None
+    if native is None or native.IsDisposed or not native.IsHandleCreated:
         return False
     try:
+        if native.InvokeRequired:
+            from System import Func, Boolean
+            return bool(native.Invoke(Func[Boolean](lambda: _apply_backdrop())))
+
         import ctypes
         from ctypes import wintypes
+        from System.Drawing import Color
+        # Never reuse a handle cached while BrowserForm was still constructing.
+        _hwnd = int(native.Handle.ToInt64())
+        if _is_capsule:
+            return True  # Preserve the capsule's region and disabled DWM backdrop.
+        user32 = ctypes.windll.user32
+        user32.IsIconic.argtypes = [wintypes.HWND]
+        if user32.IsIconic(_hwnd):
+            # The minimized WebView2 surface is discarded. Rebuild it on restore,
+            # not while the hidden/minimized window is being laid out.
+            _backdrop_surface_hwnd = 0
+            return True
+
+        _configure_window_frame(native)
+        native.BackColor = Color.Black
+        native.webview.DefaultBackgroundColor = Color.Transparent
+        # CSS owns the three zoom levels; disable WebView2's independent zoom.
+        if native.webview.CoreWebView2 is not None:
+            native.webview.CoreWebView2.Settings.IsZoomControlEnabled = False
+            native.webview.ZoomFactor = 1.0
         dwmapi = ctypes.windll.dwmapi
+        dwmapi.DwmSetWindowAttribute.argtypes = [
+            wintypes.HWND, wintypes.DWORD, ctypes.c_void_p, wintypes.DWORD]
+        dwmapi.DwmSetWindowAttribute.restype = ctypes.c_long
+        dwmapi.DwmExtendFrameIntoClientArea.argtypes = [wintypes.HWND, ctypes.c_void_p]
+        dwmapi.DwmExtendFrameIntoClientArea.restype = ctypes.c_long
 
-        # 1. 确保 WinForms 窗体底色为纯黑，避免 WinForms 默认灰白底色(#F0F0F0)遮挡 DWM Acrylic
-        try:
-            native = getattr(webview.windows[0], "native", None) if getattr(webview, "windows", None) else None
-            if native:
-                import System.Drawing
-                native.BackColor = System.Drawing.Color.Black
-        except Exception:
-            pass
-
-        # 2. Windows 关键核心调用：扩展磨砂玻璃框架至整个 Client 客户区
         class MARGINS(ctypes.Structure):
-            _fields_ = [
-                ("cxLeftWidth", ctypes.c_int),
-                ("cxRightWidth", ctypes.c_int),
-                ("cyTopHeight", ctypes.c_int),
-                ("cyBottomHeight", ctypes.c_int),
-            ]
+            _fields_ = [(name, ctypes.c_int) for name in
+                       ("left", "right", "top", "bottom")]
+
         margins = MARGINS(-1, -1, -1, -1)
-        hr_extend = dwmapi.DwmExtendFrameIntoClientArea(hwnd, ctypes.byref(margins))
-
-        # 3. Windows 11 DWM 真实桌面壁纸高斯模糊透光
-        # 默认 3 (Acrylic: 晶莹透视)，支持由环境变量 TOKEN_VIEWER_BACKDROP 设为 4 (Mica Alt) 或 2 (Mica)
-        b_val = 3
+        hr_extend = dwmapi.DwmExtendFrameIntoClientArea(_hwnd, ctypes.byref(margins))
         try:
-            b_val = int(os.environ.get("TOKEN_VIEWER_BACKDROP", "3"))
-        except Exception:
-            b_val = 3
-        backdrop_val = ctypes.c_int(b_val)
-        hr_acrylic = dwmapi.DwmSetWindowAttribute(hwnd, 38, ctypes.byref(backdrop_val), ctypes.sizeof(backdrop_val))
-
-        # 4. Windows 系统级圆角 (ROUND = 2)
-        val = ctypes.c_int(2)  # DWMWA_WINDOW_CORNER_PREFERENCE = ROUND
-        dwmapi.DwmSetWindowAttribute(hwnd, 33, ctypes.byref(val), ctypes.sizeof(val))
-
-        # 5. 沉浸式暗色标题/背板 (DWMWA_USE_IMMERSIVE_DARK_MODE = 20)
-        dark_val = ctypes.c_int(1)
-        dwmapi.DwmSetWindowAttribute(hwnd, 20, ctypes.byref(dark_val), ctypes.sizeof(dark_val))
-
-        log(f"backdrop applied: hr_extend={hr_extend}, hr_acrylic={hr_acrylic}, type={b_val}")
-        return True
+            backdrop = int(os.environ.get("TOKEN_VIEWER_BACKDROP", "3"))
+        except ValueError:
+            backdrop = 3
+        if backdrop not in (2, 3, 4):
+            backdrop = 3
+        attributes = {
+            20: 0 if _theme == "light" else 1,
+            38: backdrop,
+            33: 1 if native.is_fullscreen else 2,
+            34: 0xFFFFFFFE if native.is_fullscreen else 0xFFFFFFFF,
+        }
+        results = {}
+        for attribute, value in attributes.items():
+            val = wintypes.DWORD(value)
+            results[attribute] = dwmapi.DwmSetWindowAttribute(
+                _hwnd, attribute, ctypes.byref(val), ctypes.sizeof(val))
+        log(f"backdrop applied: hwnd={_hwnd}, extend={hr_extend}, attrs={results}, fullscreen={native.is_fullscreen}")
+        if window.events.loaded.is_set():
+            _prime_backdrop_surface()
+        return hr_extend == 0 and all(hr == 0 for hr in results.values())
     except Exception as e:
         log("backdrop apply FAIL: " + repr(e))
         return False
@@ -776,12 +873,15 @@ class JsApi:
                     is_max = bool(native.WindowState == WinForms.FormWindowState.Maximized)
                     if is_full:
                         window.toggle_fullscreen()
+                        _apply_backdrop()
                         return False
                     elif is_max:
                         native.WindowState = WinForms.FormWindowState.Normal
+                        _apply_backdrop()
                         return False
                     else:
                         window.toggle_fullscreen()
+                        _apply_backdrop()
                         return True
         except Exception as e:
             log("JsApi toggle_fullscreen_or_maximize FAIL: " + repr(e))
@@ -816,6 +916,7 @@ class JsApi:
                         window.toggle_fullscreen()
                     elif native.WindowState == WinForms.FormWindowState.Maximized:
                         native.WindowState = WinForms.FormWindowState.Normal
+                    _apply_backdrop()
                     return True
         except Exception as e:
             log("JsApi restore_window FAIL: " + repr(e))
@@ -981,34 +1082,7 @@ class JsApi:
                     except Exception:
                         pass
 
-                    # 恢复 WinForms 黑色底色与 DWM Acrylic 高斯模糊与 Win11 系统圆角
-                    try:
-                        native = getattr(window, "native", None)
-                        if native:
-                            import clr
-                            clr.AddReference("System.Drawing")
-                            import System.Drawing
-                            native.BackColor = System.Drawing.Color.Black
-                    except Exception:
-                        pass
-
-                    try:
-                        dwmapi = ctypes.windll.dwmapi
-                        class MARGINS(ctypes.Structure):
-                            _fields_ = [
-                                ("cxLeftWidth", ctypes.c_int),
-                                ("cxRightWidth", ctypes.c_int),
-                                ("cyTopHeight", ctypes.c_int),
-                                ("cyBottomHeight", ctypes.c_int),
-                            ]
-                        margins = MARGINS(-1, -1, -1, -1)
-                        dwmapi.DwmExtendFrameIntoClientArea(_hwnd, ctypes.byref(margins))
-                        backdrop_val = ctypes.c_int(3)
-                        dwmapi.DwmSetWindowAttribute(_hwnd, 38, ctypes.byref(backdrop_val), ctypes.sizeof(backdrop_val))
-                        val_round = ctypes.c_int(2)
-                        dwmapi.DwmSetWindowAttribute(_hwnd, 33, ctypes.byref(val_round), ctypes.sizeof(val_round))
-                    except Exception:
-                        pass
+                    _apply_backdrop()
 
                     return True
         except Exception as e:
@@ -1199,20 +1273,22 @@ def main():
     try:
         api = JsApi()
         window = webview.create_window(
-            "TokenViewer Pro", "http://127.0.0.1:" + str(port),
+            "TokenViewer Pro", f"http://127.0.0.1:{port}/?v={UI_REVISION}",
             width=width, height=height, resizable=True, frameless=True, easy_drag=False,
-            transparent=True, min_size=(180, 36), js_api=api)
+            transparent=True, background_color="#000000", min_size=(180, 36), js_api=api)
         window.events.closing += _exit_now
 
         def _on_loaded():
             log("window loaded event fired: reinforcing backdrop")
             _apply_backdrop()
+            _prime_backdrop_surface()
 
+        window.events.before_show += _setup_window
         window.events.loaded += _on_loaded
-        threading.Thread(target=_setup_window, daemon=True).start()
+        window.events.restored += _queue_backdrop_refresh
         # storage_path：WebView2 持久数据目录固定到 ~/.codex/token_viewer_webview，
         # 避免每次启动重建浏览器环境，显著加快后续启动。
-        webview.start(storage_path=os.path.join(
+        webview.start(private_mode=False, storage_path=os.path.join(
             os.path.expanduser("~"), ".codex", "token_viewer_webview"))
         log("webview returned")
     except Exception as e:

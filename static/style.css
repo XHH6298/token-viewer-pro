@@ -46,6 +46,7 @@
   --input-border: rgba(255, 255, 255, 0.09);
   --input-focus-border: rgba(56, 189, 248, 0.5);
   --input-focus-glow: rgba(56, 189, 248, 0.15);
+  --ease-popover: cubic-bezier(0.23, 1, 0.32, 1);
 }
 
 * {
@@ -73,6 +74,42 @@ html, body {
   background: transparent;
   overflow: hidden;
   position: relative;
+}
+
+/* Startup-only content entry. Never fade a backdrop-filter container. */
+.app-window[data-startup="waiting"] [data-startup-item] {
+  opacity: 0;
+  transform: translateY(3px);
+}
+
+.app-window[data-startup="playing"] [data-startup-item] {
+  animation: startup-content-entry 100ms var(--ease-popover) calc(100ms - var(--startup-preparation, 0ms)) backwards;
+}
+
+.app-window[data-startup="playing"] [data-startup-item="shell"] {
+  animation-duration: 160ms;
+  animation-delay: calc(60ms - var(--startup-preparation, 0ms));
+}
+
+.app-window[data-startup="playing"] [data-startup-item="1"] {
+  animation-delay: calc(130ms - var(--startup-preparation, 0ms));
+}
+
+.app-window[data-startup="playing"] [data-startup-item="2"] {
+  animation-delay: calc(160ms - var(--startup-preparation, 0ms));
+}
+
+@keyframes startup-content-entry {
+  from { opacity: 0; transform: translateY(3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-window[data-startup] [data-startup-item] {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
 }
 
 /* ================= 空间液态流体环境微光底层 (Liquid Ambient Flow) ================= */
@@ -895,7 +932,8 @@ body.is-fullscreen .sidebar {
   display: none;
   flex-direction: column;
   gap: 8px;
-  animation: fadeIn 0.2s ease-out;
+  /* Keep opacity at 1: fading an ancestor changes the backdrop-filter root
+     and makes glass cards flash lighter before returning to their dark tint. */
   width: 100%;
   min-width: 0;
   box-sizing: border-box;
@@ -912,14 +950,48 @@ body.is-fullscreen .sidebar {
   flex: 1;
   min-height: 0;
   padding-bottom: 20px;
+  padding-right: 6px;
+  scrollbar-gutter: stable;
 }
 
-.view-panel:not(#view-dashboard)::-webkit-scrollbar {
-  width: 5px;
+.view-panel:not(#view-dashboard)::-webkit-scrollbar,
+.pricing-table-wrap::-webkit-scrollbar {
+  width: 10px;
+  background: transparent;
 }
-.view-panel:not(#view-dashboard)::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 4px;
+
+.view-panel:not(#view-dashboard)::-webkit-scrollbar-track,
+.pricing-table-wrap::-webkit-scrollbar-track {
+  background: transparent;
+  margin-block: 10px;
+}
+
+.view-panel:not(#view-dashboard)::-webkit-scrollbar-thumb,
+.pricing-table-wrap::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.14);
+  border: 3px solid transparent;
+  background-clip: padding-box;
+  border-radius: 999px;
+  min-height: 36px;
+}
+
+.view-panel:not(#view-dashboard)::-webkit-scrollbar-button,
+.pricing-table-wrap::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .view-panel:not(#view-dashboard):hover::-webkit-scrollbar-thumb,
+  .pricing-table-wrap:hover::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.23);
+  }
+}
+
+.view-panel:not(#view-dashboard)::-webkit-scrollbar-thumb:active,
+.pricing-table-wrap::-webkit-scrollbar-thumb:active {
+  background-color: rgba(255, 255, 255, 0.36);
 }
 
 /* 仪表盘面板：完美撑满视口，零垂直滚动 */
@@ -933,11 +1005,6 @@ body.is-fullscreen .sidebar {
   gap: 8px;
   padding-bottom: 0;
   overflow: hidden;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(3px); }
-  to { opacity: 1; transform: translateY(0); }
 }
 
 .view-header {
@@ -1824,6 +1891,171 @@ body.is-fullscreen .sidebar {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.settings-box .box-info {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+.language-select {
+  width: 200px;
+  max-width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--input-border);
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.025));
+  color: var(--text-primary);
+  color-scheme: dark;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
+  cursor: pointer;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.055);
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.language-select:focus-visible {
+  outline: 1.5px solid rgba(56, 189, 248, 0.45);
+  outline-offset: 2px;
+}
+
+/* Native select semantics, focus, typeahead and dismissal; styled in-page picker. */
+@supports (appearance: base-select) {
+  .language-select,
+  .language-select::picker(select) {
+    appearance: base-select;
+  }
+
+  .language-select:open {
+    border-color: rgba(255, 255, 255, 0.2);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 0 0 3px rgba(56, 189, 248, 0.055);
+  }
+
+  .language-select::picker-icon {
+    content: '';
+    width: 6px;
+    height: 6px;
+    margin: 0 2px 2px auto;
+    border-right: 1.5px solid var(--text-secondary);
+    border-bottom: 1.5px solid var(--text-secondary);
+    transform: rotate(45deg);
+    transition: transform 180ms var(--ease-popover);
+  }
+
+  .language-select:open::picker-icon {
+    transform: rotate(225deg);
+  }
+
+  .language-select::picker(select) {
+    margin-block: 6px;
+    padding: 5px;
+    border: 1px solid rgba(255, 255, 255, 0.13);
+    border-radius: 12px;
+    background: linear-gradient(160deg, rgba(29, 31, 44, 0.97), rgba(17, 19, 28, 0.98));
+    backdrop-filter: blur(24px) saturate(140%);
+    -webkit-backdrop-filter: blur(24px) saturate(140%);
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    color: var(--text-primary);
+    max-block-size: min(380px, calc(100dvh - 180px));
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+    transform-origin: top right;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(-4px) scale(0.97);
+    transition:
+      opacity 180ms var(--ease-popover),
+      transform 180ms var(--ease-popover),
+      display 180ms allow-discrete,
+      overlay 180ms allow-discrete;
+  }
+
+  .language-select:open::picker(select) {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0) scale(1);
+  }
+
+  @starting-style {
+    .language-select:open::picker(select) {
+      opacity: 0;
+      transform: translateY(-4px) scale(0.97);
+    }
+  }
+
+  .language-select option {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 28px;
+    margin: 1px 0;
+    padding: 4px 10px;
+    border: 1px solid transparent;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--text-secondary);
+    font: inherit;
+    cursor: pointer;
+    transition: background-color 120ms ease, color 120ms ease;
+  }
+
+  .language-select option:checked {
+    color: var(--text-primary);
+    background: rgba(56, 189, 248, 0.1);
+    border-color: rgba(56, 189, 248, 0.13);
+  }
+
+  .language-select option:focus-visible {
+    outline: 1px solid rgba(56, 189, 248, 0.38);
+    outline-offset: -1px;
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.07);
+  }
+
+  .language-select option::checkmark {
+    order: 1;
+    margin-inline-start: auto;
+    content: '✓';
+    color: var(--accent-cyan);
+    font-size: 12px;
+  }
+
+  .language-select[data-motion="instant"]::picker(select),
+  .language-select[data-motion="instant"],
+  .language-select[data-motion="instant"]::picker-icon {
+    transition: none;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .language-select:hover { border-color: rgba(255, 255, 255, 0.18); }
+    .language-select option:hover {
+      color: var(--text-primary);
+      background: rgba(255, 255, 255, 0.07);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .language-select::picker(select),
+    .language-select,
+    .language-select::picker-icon,
+    .language-select option { transition: none; }
+    .language-select::picker(select) { transform: none; }
+  }
+}
+
+.url-input-group {
+  max-width: 100%;
+}
+
+.view-header .view-desc {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .box-title {
@@ -1875,6 +2107,7 @@ body.is-fullscreen .sidebar {
 
 .pro-input {
   flex: 1;
+  min-width: 0;
   background: var(--input-bg);
   border: 1px solid var(--input-border);
   border-radius: 8px;
@@ -1951,6 +2184,17 @@ body.is-fullscreen .sidebar {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 12px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.pricing-head .p-title-group {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.pricing-actions {
+  flex-wrap: wrap;
 }
 
 .pricing-actions {
@@ -1992,23 +2236,6 @@ body.is-fullscreen .sidebar {
   overflow-y: auto;
   overflow-x: hidden;
   padding: 6px 4px 6px 0;
-}
-
-.pricing-table-wrap::-webkit-scrollbar {
-  width: 5px;
-}
-
-.pricing-table-wrap::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.pricing-table-wrap::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.12);
-  border-radius: 4px;
-}
-
-.pricing-table-wrap::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.22);
 }
 
 .pricing-row {
@@ -2436,190 +2663,3 @@ body.capsule-mode .dynamic-island-wrapper {
     filter: blur(0);
   }
 }
-
-/* ==========================================================================
-   纯正黑水晶毛玻璃开机丝滑过渡 (Liquid Glass Startup Transition)
-   无假进度条、无假自检、无旋转环，纯正物理光学消融
-   ========================================================================== */
-
-.app-glass-veil {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  width: 100vw;
-  height: 100vh;
-  z-index: 99990;
-  background: radial-gradient(circle at 50% 48%, rgba(14, 18, 30, 0.88) 0%, rgba(6, 9, 16, 0.96) 100%);
-  backdrop-filter: blur(40px) saturate(210%);
-  -webkit-backdrop-filter: blur(40px) saturate(210%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  user-select: none;
-  -webkit-user-select: none;
-  pointer-events: auto;
-  overflow: hidden;
-  transition: 
-    opacity 0.42s cubic-bezier(0.16, 1, 0.3, 1),
-    transform 0.42s cubic-bezier(0.16, 1, 0.3, 1),
-    filter 0.42s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-/* 胶囊模式下绝不展示过渡层 */
-body.capsule-mode .app-glass-veil {
-  display: none !important;
-}
-
-/* 优雅消融态：毛玻璃由深转透，伴随微晶虚化散开 */
-.app-glass-veil.veil-dismissed {
-  opacity: 0 !important;
-  transform: scale(1.04) !important;
-  filter: blur(20px) !important;
-  pointer-events: none !important;
-}
-
-/* 背景柔和微晶极光光斑 */
-.glass-veil-ambient {
-  position: absolute;
-  width: 360px;
-  height: 360px;
-  border-radius: 50%;
-  top: 48%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  background: radial-gradient(circle, rgba(56, 189, 248, 0.25) 0%, rgba(16, 185, 129, 0.15) 45%, transparent 70%);
-  filter: blur(60px);
-  pointer-events: none;
-  animation: veil-ambient-pulse 3.6s infinite ease-in-out;
-}
-
-@keyframes veil-ambient-pulse {
-  0%, 100% { opacity: 0.5; transform: translate(-50%, -50%) scale(0.95); }
-  50% { opacity: 0.85; transform: translate(-50%, -50%) scale(1.1); }
-}
-
-.glass-veil-center {
-  position: relative;
-  z-index: 2;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-}
-
-.glass-veil-brand {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 16px;
-  animation: veil-brand-pop 0.55s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-@keyframes veil-brand-pop {
-  0% {
-    opacity: 0;
-    transform: scale(0.85) translateY(12px);
-    filter: blur(6px);
-  }
-  100% {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-    filter: blur(0);
-  }
-}
-
-.glass-veil-logo {
-  width: 58px;
-  height: 58px;
-  border-radius: 15px;
-  object-fit: contain;
-  box-shadow: 
-    0 12px 32px -4px rgba(0, 0, 0, 0.6),
-    0 0 24px rgba(56, 189, 248, 0.3),
-    inset 0 1px 1px rgba(255, 255, 255, 0.4);
-}
-
-.glass-veil-title {
-  font-size: 20px;
-  font-weight: 700;
-  color: #ffffff;
-  letter-spacing: 0.04em;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
-}
-
-.glass-veil-badge {
-  font-size: 9.5px;
-  font-weight: 800;
-  padding: 2px 6.5px;
-  border-radius: 5px;
-  background: linear-gradient(135deg, #38bdf8 0%, #0284c7 100%);
-  color: #ffffff;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  box-shadow: 0 0 12px rgba(56, 189, 248, 0.45);
-}
-
-/* ==========================================================================
-   主界面瀑布流级联入场动画 (Staggered Cascade Entrance)
-   ========================================================================== */
-.app-window.app-entering .sidebar {
-  opacity: 0;
-  transform: translateX(-12px);
-  transition: opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1), transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.app-window.app-entering .main-topbar {
-  opacity: 0;
-  transform: translateY(-8px);
-  transition: opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.06s, transform 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.06s;
-}
-
-.app-window.app-entering .card-today-tokens {
-  opacity: 0;
-  transform: translateY(14px);
-  transition: opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.08s, transform 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.08s;
-}
-
-.app-window.app-entering .card-today-cost {
-  opacity: 0;
-  transform: translateY(14px);
-  transition: opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.12s, transform 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.12s;
-}
-
-.app-window.app-entering .card-active-models {
-  opacity: 0;
-  transform: translateY(14px);
-  transition: opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.16s, transform 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.16s;
-}
-
-.app-window.app-entering .card-cache-rate {
-  opacity: 0;
-  transform: translateY(14px);
-  transition: opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.20s, transform 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.20s;
-}
-
-.app-window.app-entering .chart-card {
-  opacity: 0;
-  transform: translateY(14px);
-  transition: opacity 0.55s cubic-bezier(0.16, 1, 0.3, 1) 0.24s, transform 0.55s cubic-bezier(0.16, 1, 0.3, 1) 0.24s;
-}
-
-/* 激活态：全部组件丝滑归位 */
-.app-window.app-ready .sidebar,
-.app-window.app-ready .main-topbar,
-.app-window.app-ready .card-today-tokens,
-.app-window.app-ready .card-today-cost,
-.app-window.app-ready .card-active-models,
-.app-window.app-ready .card-cache-rate,
-.app-window.app-ready .chart-card {
-  opacity: 1 !important;
-  transform: translate(0, 0) !important;
-}
-
-
-
