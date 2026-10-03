@@ -6,7 +6,10 @@
 
 一款专为本地 AI 编程智能体打造的高颜值**空间毛玻璃**桌面监控仪表盘。聚合 **Codex CLI、Claude Code、ZCode、Pi 与 Antigravity** 五大主流 AI 编程 Agent 的 Token 实时用量与成本核算，呈现宛如 macOS / VisionOS 的极致视觉交互。
 
-![界面预览](docs/screenshot.png)
+<p align="center">
+  <img src="docs/screenshot.png" width="49%" alt="展开模式" />
+  <img src="docs/screenshot-compact.png" width="49%" alt="紧凑模式" />
+</p>
 
 ## 功能亮点
 
