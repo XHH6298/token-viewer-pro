@@ -4,7 +4,7 @@
   <b>English</b> | <a href="README_zh.md">简体中文</a>
 </p>
 
-A frosted-glass desktop dashboard that shows real-time **token usage and cost** across local AI coding agents — Codex CLI, Claude Code, ZCode, Pi, and Antigravity — in one macOS / Vision Pro style glass widget.
+A frosted-glass desktop dashboard that shows real-time **token usage and cost** across local AI coding agents — Codex CLI, Claude Code, ZCode, Pi, and Antigravity.
 
 <p align="center">
   <img src="docs/screenshot.png" width="49%" alt="Full Sidebar Mode" />
